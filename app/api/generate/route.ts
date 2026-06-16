@@ -1,15 +1,15 @@
 // path: app/api/generate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { SYSTEM_PROMPT, buildUserPrompt } from '@/lib/prompt';
 import type { GenerateInput, GeneratedCopy } from '@/lib/types';
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'ANTHROPIC_API_KEY가 설정되지 않았습니다.' },
+        { error: 'OPENAI_API_KEY가 설정되지 않았습니다.' },
         { status: 500 },
       );
     }
@@ -22,21 +22,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const anthropic = new Anthropic({ apiKey });
-    const msg = await anthropic.messages.create({
-      model: 'claude-fable-5',
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildUserPrompt(input) }],
+    const openai = new OpenAI({ apiKey });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.8,
+      response_format: { type: 'json_object' }, // JSON만 강제 출력
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: buildUserPrompt(input) },
+      ],
     });
 
-    const block = msg.content.find((b) => b.type === 'text');
-    const raw = block && 'text' in block ? block.text : '';
-    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const raw = completion.choices[0]?.message?.content ?? '';
 
     let copy: GeneratedCopy;
     try {
-      copy = JSON.parse(cleaned);
+      copy = JSON.parse(raw);
     } catch {
       return NextResponse.json({ error: 'AI 응답 파싱 실패', raw }, { status: 502 });
     }
